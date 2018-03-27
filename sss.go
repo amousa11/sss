@@ -1,23 +1,45 @@
 package main
 
-import "fmt"
-import "math/big"
-import "crypto/rand"
+import (
+	"crypto/rand"
+	"fmt"
+	"math/big"
+	"os"
+	"strconv"
+)
 
 func main() {
-	prime := big.NewInt(1)
-	prime.Mul(prime, big.NewInt(2)).Exp(prime, big.NewInt(127), big.NewInt(0)).Sub(prime, big.NewInt(1))
-	fmt.Println("FIELD ORDER 2^512 - 1 =", prime.Text(16))
 
-	secret, xs, ys := makeRandomShares(3, 6, prime)
+	fmt.Println(os.Args)
+	args := os.Args[1:]
+
+	if len(args) < 2 {
+		panic("expected more arguments: ./sss minimum shares")
+	}
+
+	n, err := strconv.Atoi(args[0])
+	if err != nil {
+		panic(err)
+	}
+
+	m, err := strconv.Atoi(args[1])
+	if err != nil {
+		panic(err)
+	}
+
+	prime, _ := big.NewInt(1).SetString("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F", 16)
+
+	fmt.Println("FIELD ORDER =", prime.Text(16))
+	fmt.Println("Generating ", n, "shares with threshold", m, " for recovery:")
+	secret, xs, ys := makeRandomShares(n, m, prime)
 	fmt.Println("Secret : ", secret.Text(16))
 
-	fmt.Println("Points : ")
+	fmt.Println("Shares : ")
 	for i := 0; i < len(xs); i++ {
 		fmt.Println(xs[i].Text(16), "\t", ys[i].Text(16))
 	}
 
-	recoveredSecret := recoverSecret(xs[:3], ys[:3], prime)
+	recoveredSecret := recoverSecret(xs[:n], ys[:n], prime)
 
 	// fmt.Println("secret", secret.Text(16))
 
