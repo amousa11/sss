@@ -106,19 +106,19 @@ func evaluatePoly(coeff []*big.Int, point *big.Int, prime *big.Int) (*big.Int, *
 func lagrangeInterpolate(point *big.Int, xs []*big.Int, ys []*big.Int, prime *big.Int) *big.Int {
 	// assuming points are distinct
 	sum := big.NewInt(0)
-	prod := big.NewInt(1)
 	elems := make(chan *big.Int, len(xs))
 	for j := 0; j < len(xs); j++ {
-		go lagrangeInterpolateHelper(elems, xs, j, prime)
-		y := big.NewInt(0).Set(ys[j])
-		y.Mul(y, prod)
-		sum.Add(sum, y)
+		go lagrangeInterpolateHelper(elems, xs, j, ys[j], prime)
+	}
+	for k := 0; k < len(xs); k++ {
+		sum.Add(sum, <-elems)
 	}
 	sum.Mod(sum, prime)
 	return sum
 }
 
-func lagrangeInterpolateHelper(elems chan *big.Int, arr []*big.Int, ind int, prime *big.Int) {
+func lagrangeInterpolateHelper(elems chan *big.Int, arr []*big.Int, ind int, y *big.Int, prime *big.Int) {
+	prod := big.NewInt(1)
 	for m := 0; m < len(arr); m++ {
 		if m != ind {
 			denom := big.NewInt(0).Set(arr[m])
@@ -126,7 +126,9 @@ func lagrangeInterpolateHelper(elems chan *big.Int, arr []*big.Int, ind int, pri
 			denom.ModInverse(denom, prime)
 			x := big.NewInt(0).Set(arr[m])
 			x.Mul(x, denom)
-			elems <- x
+			prod.Mul(prod, x)
 		}
 	}
+	prod.Mul(prod, y)
+	elems <- prod
 }
