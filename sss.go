@@ -107,8 +107,9 @@ func lagrangeInterpolate(point *big.Int, xs []*big.Int, ys []*big.Int, prime *bi
 	// assuming points are distinct
 	sum := big.NewInt(0)
 	prod := big.NewInt(1)
+	elems := make(chan *big.Int, len(xs))
 	for j := 0; j < len(xs); j++ {
-		go lagrangeInterpolateHelper(prod, xs, j, prime)
+		go lagrangeInterpolateHelper(elems, xs, j, prime)
 		y := big.NewInt(0).Set(ys[j])
 		y.Mul(y, prod)
 		sum.Add(sum, y)
@@ -117,7 +118,7 @@ func lagrangeInterpolate(point *big.Int, xs []*big.Int, ys []*big.Int, prime *bi
 	return sum
 }
 
-func lagrangeInterpolateHelper(prod *big.Int, arr []*big.Int, ind int, prime *big.Int) {
+func lagrangeInterpolateHelper(elems chan *big.Int, arr []*big.Int, ind int, prime *big.Int) {
 	for m := 0; m < len(arr); m++ {
 		if m != ind {
 			denom := big.NewInt(0).Set(arr[m])
@@ -125,7 +126,7 @@ func lagrangeInterpolateHelper(prod *big.Int, arr []*big.Int, ind int, prime *bi
 			denom.ModInverse(denom, prime)
 			x := big.NewInt(0).Set(arr[m])
 			x.Mul(x, denom)
-			prod.Mul(prod, x)
+			elems <- x
 		}
 	}
 }
