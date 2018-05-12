@@ -107,28 +107,30 @@ func lagrangeInterpolate(point *big.Int, xs []*big.Int, ys []*big.Int, prime *bi
 	// assuming points are distinct
 	sum := big.NewInt(0)
 	elems := make(chan *big.Int, len(xs))
-	for j := 0; j < len(xs); j++ {
-		go lagrangeInterpolateHelper(elems, xs, j, ys[j], prime)
-	}
-	for k := 0; k < len(xs); k++ {
-		sum.Add(sum, <-elems)
+	go lagrangeInterpolateHelper(elems, xs, ys, prime)
+	for elem := range elems {
+		fmt.Println(elem.String())
+		sum.Add(sum, elem)
 	}
 	sum.Mod(sum, prime)
 	return sum
 }
 
-func lagrangeInterpolateHelper(elems chan *big.Int, arr []*big.Int, ind int, y *big.Int, prime *big.Int) {
-	prod := big.NewInt(1)
-	for m := 0; m < len(arr); m++ {
-		if m != ind {
-			denom := big.NewInt(0).Set(arr[m])
-			denom.Sub(denom, arr[ind])
-			denom.ModInverse(denom, prime)
-			x := big.NewInt(0).Set(arr[m])
-			x.Mul(x, denom)
-			prod.Mul(prod, x)
+func lagrangeInterpolateHelper(elems chan *big.Int, xs []*big.Int, ys []*big.Int, prime *big.Int) {
+	for i := 0; i < len(xs); i++ {
+		prod := big.NewInt(1)
+		for j := 0; j < len(xs); j++ {
+			if j != i {
+				denom := big.NewInt(0).Set(xs[j])
+				denom.Sub(denom, xs[i])
+				denom.ModInverse(denom, prime)
+				x := big.NewInt(0).Set(xs[j])
+				x.Mul(x, denom)
+				prod.Mul(prod, x)
+			}
 		}
+		prod.Mul(prod, ys[i])
+		elems <- prod
 	}
-	prod.Mul(prod, y)
-	elems <- prod
+	close(elems)
 }

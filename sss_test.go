@@ -5,8 +5,8 @@ import "math/big"
 
 func TestSecretGeneration(t *testing.T) {
 
-	min := 100
-	shares := 1200
+	min := 200
+	shares := 500
 	prime, _ := big.NewInt(1).SetString("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F", 16)
 
 	secret, xs, ys := makeRandomShares(min, shares, prime)
