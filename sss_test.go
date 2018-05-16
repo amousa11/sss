@@ -9,8 +9,8 @@ func TestSecretGeneration(t *testing.T) {
 	shares := 500
 	prime, _ := big.NewInt(1).SetString("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F", 16)
 
-	secret, xs, ys := makeRandomShares(min, shares, prime)
-	recoveredSecret := recoverSecret(xs[:min], ys[:min], prime)
+	secret, points := makeRandomShares(min, shares, prime)
+	recoveredSecret := recoverSecret(points[:min], prime)
 
 	t.Log("Expect ", secret, "to equal", recoveredSecret)
 
