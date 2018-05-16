@@ -8,6 +8,12 @@ import (
 	"strconv"
 )
 
+// Point on a polynomial in Fp[x] where p is a prime
+type Point struct {
+	x *big.Int
+	y *big.Int
+}
+
 func main() {
 
 	fmt.Println(os.Args)
@@ -31,25 +37,22 @@ func main() {
 
 	fmt.Println("FIELD ORDER =", prime.Text(16))
 	fmt.Println("Generating ", n, "shares with threshold", m, " for recovery:")
-	secret, xs, ys := makeRandomShares(n, m, prime)
+	secret, points := makeRandomShares(n, m, prime)
 	fmt.Println("Secret : ", secret.Text(16))
 
 	fmt.Println("Shares : ")
-	for i := 0; i < len(xs); i++ {
-		fmt.Println(xs[i].Text(16), "\t", ys[i].Text(16))
+	for i := 0; i < len(points); i++ {
+		fmt.Println(points[i].x.Text(16), "\t", points[i].y.Text(16))
 	}
 
-	recoveredSecret := recoverSecret(xs[:n], ys[:n], prime)
-
-	// fmt.Println("secret", secret.Text(16))
+	recoveredSecret := recoverSecret(points[:n], prime)
 
 	fmt.Println("secret recovered from minimum subset of shares", recoveredSecret.Text(16))
 }
 
-func makeRandomShares(minimum int, shares int, prime *big.Int) (*big.Int, []*big.Int, []*big.Int) {
-	xs := make([]*big.Int, shares)
-	ys := make([]*big.Int, shares)
+func makeRandomShares(minimum int, shares int, prime *big.Int) (*big.Int, []*Point) {
 	poly := make([]*big.Int, minimum)
+	points := make([]*Point, shares)
 
 	if minimum > shares {
 		panic("min less than shares")
@@ -63,10 +66,49 @@ func makeRandomShares(minimum int, shares int, prime *big.Int) (*big.Int, []*big
 
 	for i := 0; i < shares; i++ {
 		point := big.NewInt(int64(i + 1))
-		xs[i], ys[i] = evaluatePoly(poly, point, prime)
+		points[i] = evaluatePoly(poly, point, prime)
 	}
 
-	return poly[0], xs, ys
+	return poly[0], points
+}
+
+func recoverSecret(points []*Point, prime *big.Int) *big.Int {
+	if len(points) < 2 {
+		panic("need at least 2 points")
+	}
+
+	return lagrangeInterpolate(big.NewInt(0), points, prime)
+}
+
+func lagrangeInterpolate(point *big.Int, points []*Point, prime *big.Int) *big.Int {
+	// assuming points are distinct
+	sum := big.NewInt(0)
+	elems := make(chan *big.Int, len(points))
+	go lagrangeInterpolateHelper(elems, points, prime) // concurrently calculate prod x_i / x_i - x_j
+	for elem := range elems {
+		sum.Add(sum, elem) // sum += f(x_j) * prod x_i / x_i - x_j
+	}
+	sum.Mod(sum, prime)
+	return sum
+}
+
+func lagrangeInterpolateHelper(elems chan *big.Int, points []*Point, prime *big.Int) {
+	for i := 0; i < len(points); i++ {
+		prod := big.NewInt(1)
+		for j := 0; j < len(points); j++ {
+			if j != i {
+				denom := big.NewInt(0).Set(points[j].x) // denom = x_j
+				denom.Sub(denom, points[i].x)           // denom = x_j - x_i
+				denom.ModInverse(denom, prime)          // denom = 1 / (x_j - x_i)
+				x := big.NewInt(0).Set(points[j].x)     // x = x_j
+				x.Mul(x, denom)                         // x_j * (x_j - x_i)
+				prod.Mul(prod, x)                       // prod *= x_j * (x_j - x_i)
+			}
+		}
+		prod.Mul(prod, points[i].y) // prod *= y
+		elems <- prod               // send it back to lagrangeInterpolator
+	}
+	close(elems) // done calculating, close the channel and exit
 }
 
 func generateRandomBytes(n int) *big.Int {
@@ -82,46 +124,18 @@ func generateRandomBytes(n int) *big.Int {
 	return rtn
 }
 
-func recoverSecret(xs []*big.Int, ys []*big.Int, prime *big.Int) *big.Int {
-	if len(xs) < 2 {
-		panic("need at least 2 points")
-	}
-
-	return lagrangeInterpolate(big.NewInt(0), xs, ys, prime)
-}
-
-func evaluatePoly(coeff []*big.Int, point *big.Int, prime *big.Int) (*big.Int, *big.Int) {
-	total := big.NewInt(0)
+func evaluatePoly(coeff []*big.Int, x *big.Int, prime *big.Int) *Point {
+	point := new(Point)
+	y := big.NewInt(0)
 	for i := 0; i < len(coeff); i++ {
-		x := big.NewInt(0)
-		x.Set(point)
-		x.Exp(x, big.NewInt(int64(i)), prime)
-		x.Mul(x, coeff[i])
-		total.Add(total, x)
+		eval := big.NewInt(0)
+		eval.Set(x)                                 // eval = x
+		eval.Exp(eval, big.NewInt(int64(i)), prime) // x ^ i
+		eval.Mul(eval, coeff[i])                    // * coeff[i]
+		y.Add(y, eval)                              // y += coeff * x ^ i
 	}
-	total.Mod(total, prime)
-	return point, total
-}
-
-func lagrangeInterpolate(point *big.Int, xs []*big.Int, ys []*big.Int, prime *big.Int) *big.Int {
-	// assuming points are distinct
-	sum := big.NewInt(0)
-	for j := 0; j < len(xs); j++ {
-		prod := big.NewInt(1)
-		for m := 0; m < len(xs); m++ {
-			if m != j {
-				denom := big.NewInt(0).Set(xs[m])
-				denom.Sub(denom, xs[j])
-				denom.ModInverse(denom, prime)
-				x := big.NewInt(0).Set(xs[m])
-				x.Mul(x, denom)
-				prod.Mul(prod, x)
-			}
-		}
-		y := big.NewInt(0).Set(ys[j])
-		y.Mul(y, prod)
-		sum.Add(sum, y)
-	}
-	sum.Mod(sum, prime)
-	return sum
+	y.Mod(y, prime) // y = y mod prime
+	point.x = x
+	point.y = y
+	return point
 }
