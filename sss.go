@@ -15,17 +15,17 @@ func main() {
 	args := os.Args[1:]
 
 	if len(args) < 2 {
-		fmt.Errorf("expected more arguments: ./sss minimum shares")
+		panic("expected more arguments: ./sss minimum shares")
 	}
 
 	n, err := strconv.Atoi(args[0])
 	if err != nil {
-		fmt.Errorf(err.Error())
+		panic(err.Error())
 	}
 
 	m, err := strconv.Atoi(args[1])
 	if err != nil {
-		fmt.Errorf(err.Error())
+		panic(err.Error())
 	}
 
 	prime, _ := big.NewInt(1).SetString("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F", 16)
@@ -34,7 +34,7 @@ func main() {
 	fmt.Println("Generating ", n, "shares with threshold", m, " for recovery:")
 	secret, points, e := GenerateShares(n, m, prime)
 	if e != nil {
-		fmt.Errorf(e.Error())
+		panic(e.Error())
 	}
 	fmt.Println("Secret : ", secret.Text(16))
 
@@ -46,7 +46,7 @@ func main() {
 	recoveredSecret, e := RecoverSecret(points[:n], prime)
 
 	if e != nil {
-		fmt.Errorf(e.Error())
+		panic(e.Error())
 	}
 
 	fmt.Println("secret recovered from minimum subset of shares", recoveredSecret.Text(16))
@@ -58,7 +58,7 @@ func GenerateShares(minimum int, shares int, prime *big.Int) (*big.Int, []*utils
 	points := make([]*utils.Point, shares)
 
 	if minimum > shares {
-		errors.New("Minimum number of shares specified is greater than the total number of shares")
+		return nil, nil, errors.New("Minimum number of shares specified is greater than the total number of shares")
 	}
 
 	for i := 0; i < minimum; i++ { // should be i < shares.
