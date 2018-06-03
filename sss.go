@@ -1,18 +1,13 @@
-package main
+package sss
 
 import (
-	"crypto/rand"
+	"errors"
 	"fmt"
 	"math/big"
 	"os"
+	"sss/utils"
 	"strconv"
 )
-
-// Point on a polynomial in Fp[x] where p is a prime
-type Point struct {
-	x *big.Int
-	y *big.Int
-}
 
 func main() {
 
@@ -20,122 +15,74 @@ func main() {
 	args := os.Args[1:]
 
 	if len(args) < 2 {
-		panic("expected more arguments: ./sss minimum shares")
+		fmt.Errorf("expected more arguments: ./sss minimum shares")
 	}
 
 	n, err := strconv.Atoi(args[0])
 	if err != nil {
-		panic(err)
+		fmt.Errorf(err.Error())
 	}
 
 	m, err := strconv.Atoi(args[1])
 	if err != nil {
-		panic(err)
+		fmt.Errorf(err.Error())
 	}
 
 	prime, _ := big.NewInt(1).SetString("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F", 16)
 
 	fmt.Println("FIELD ORDER =", prime.Text(16))
 	fmt.Println("Generating ", n, "shares with threshold", m, " for recovery:")
-	secret, points := makeRandomShares(n, m, prime)
+	secret, points, e := GenerateShares(n, m, prime)
+	if e != nil {
+		fmt.Errorf(e.Error())
+	}
 	fmt.Println("Secret : ", secret.Text(16))
 
 	fmt.Println("Shares : ")
 	for i := 0; i < len(points); i++ {
-		fmt.Println(points[i].x.Text(16), "\t", points[i].y.Text(16))
+		fmt.Println(points[i].X.Text(16), "\t", points[i].Y.Text(16))
 	}
 
-	recoveredSecret := recoverSecret(points[:n], prime)
+	recoveredSecret, e := RecoverSecret(points[:n], prime)
+
+	if e != nil {
+		fmt.Errorf(e.Error())
+	}
 
 	fmt.Println("secret recovered from minimum subset of shares", recoveredSecret.Text(16))
 }
 
-func makeRandomShares(minimum int, shares int, prime *big.Int) (*big.Int, []*Point) {
+// GenerateShares generates a number of shares which can only be recovered by the minimum number of shares
+func GenerateShares(minimum int, shares int, prime *big.Int) (*big.Int, []*utils.Point, error) {
 	poly := make([]*big.Int, minimum)
-	points := make([]*Point, shares)
+	points := make([]*utils.Point, shares)
 
 	if minimum > shares {
-		panic("min less than shares")
+		errors.New("Minimum number of shares specified is greater than the total number of shares")
 	}
 
 	for i := 0; i < minimum; i++ { // should be i < shares.
-		coeff := generateRandomBytes(32)
-		coeff.Mod(coeff, prime)
-		poly[i] = coeff
+		coefficients, e := utils.GenerateRandomBigInt(32)
+		if e != nil {
+			return nil, nil, e
+		}
+		coefficients.Mod(coefficients, prime)
+		poly[i] = coefficients
 	}
 
 	for i := 0; i < shares; i++ {
 		point := big.NewInt(int64(i + 1))
-		points[i] = evaluatePoly(poly, point, prime)
+		points[i] = utils.EvaluatePolynomial(poly, point, prime)
 	}
 
-	return poly[0], points
+	return poly[0], points, nil
 }
 
-func recoverSecret(points []*Point, prime *big.Int) *big.Int {
+// RecoverSecret recovers a secret given an array of *utils.Points and a prime modulus for the Field the points reside in
+func RecoverSecret(points []*utils.Point, prime *big.Int) (*big.Int, error) {
 	if len(points) < 2 {
-		panic("need at least 2 points")
+		return nil, errors.New("Requires at least 2 shares to recover a secret")
 	}
 
-	return lagrangeInterpolate(big.NewInt(0), points, prime)
-}
-
-func lagrangeInterpolate(point *big.Int, points []*Point, prime *big.Int) *big.Int {
-	// assuming points are distinct
-	sum := big.NewInt(0)
-	elems := make(chan *big.Int, len(points))
-	go lagrangeInterpolateHelper(elems, points, prime) // concurrently calculate prod x_i / x_i - x_j
-	for elem := range elems {
-		sum.Add(sum, elem) // sum += f(x_j) * prod x_i / x_i - x_j
-	}
-	sum.Mod(sum, prime)
-	return sum
-}
-
-func lagrangeInterpolateHelper(elems chan *big.Int, points []*Point, prime *big.Int) {
-	for i := 0; i < len(points); i++ {
-		prod := big.NewInt(1)
-		for j := 0; j < len(points); j++ {
-			if j != i {
-				denom := big.NewInt(0).Set(points[j].x) // denom = x_j
-				denom.Sub(denom, points[i].x)           // denom = x_j - x_i
-				denom.ModInverse(denom, prime)          // denom = 1 / (x_j - x_i)
-				x := big.NewInt(0).Set(points[j].x)     // x = x_j
-				x.Mul(x, denom)                         // x_j * (x_j - x_i)
-				prod.Mul(prod, x)                       // prod *= x_j * (x_j - x_i)
-			}
-		}
-		prod.Mul(prod, points[i].y) // prod *= y
-		elems <- prod               // send it back to lagrangeInterpolator
-	}
-	close(elems) // done calculating, close the channel and exit
-}
-
-func generateRandomBytes(n int) *big.Int {
-	b := make([]byte, n)
-	n, err := rand.Read(b)
-
-	if err != nil {
-		panic("rand byte generation error")
-	}
-
-	rtn := big.NewInt(0)
-	rtn.SetBytes(b)
-	return rtn
-}
-
-func evaluatePoly(coeff []*big.Int, x *big.Int, prime *big.Int) *Point {
-	point := new(Point)
-	y := big.NewInt(0)
-	for i := 0; i < len(coeff); i++ {
-		eval := big.NewInt(0)
-		eval.Set(x)                                 // eval = x
-		eval.Exp(eval, big.NewInt(int64(i)), prime) // x ^ i
-		eval.Mul(eval, coeff[i])                    // * coeff[i]
-		y.Add(y, eval)                              // y += coeff * x ^ i
-	}
-	y.Mod(y, prime) // y = y mod prime
-	point.x = x
-	point.y = y
-	return point
+	return utils.LagrangeInterpolate(big.NewInt(0), points, prime), nil
 }
