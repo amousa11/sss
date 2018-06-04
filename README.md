@@ -3,6 +3,8 @@ Shamir Secret Sharing
 
 A simple, lightly tested library for share generation and recovery of a secret. 
 
+For a cli version, try [sss-cli](https://github.com/amousa11/sss-cli)
+
 ## Documentation
 
 ### GenerateShares
