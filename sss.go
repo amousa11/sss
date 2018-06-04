@@ -30,7 +30,11 @@ func GenerateShares(minimum int, shares int, prime *big.Int) (*big.Int, []*utils
 	}
 
 	for i := 0; i < shares; i++ {
-		point := big.NewInt(int64(i + 1))
+		randXValue, e := utils.GenerateRandomBigInt(32)
+		if e != nil {
+			return nil, nil, e
+		}
+		point := randXValue
 		points[i] = utils.EvaluatePolynomial(poly, point, prime)
 	}
 
